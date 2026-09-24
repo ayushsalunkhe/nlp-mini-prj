@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import re
-import math
+import os
 from collections import Counter
 
 app = Flask(__name__)
@@ -34,34 +34,36 @@ def clean_text(text):
     """
     text = text.lower()
 
-    # Extract words containing letters/numbers
-    words = re.findall(r'\b[a-zA-Z][a-zA-Z0-9-]*\b', text)
+    words = re.findall(
+        r'\b[a-zA-Z][a-zA-Z0-9-]*\b',
+        text
+    )
 
     return words
 
 
 def calculate_keywords(text, top_n=15):
     """
-    Extract keywords using frequency + TF-IDF inspired scoring.
+    Extract keywords using frequency-based relevance scoring.
     """
 
     words = clean_text(text)
 
     # Remove stop words and very short words
     filtered_words = [
-        word for word in words
+        word
+        for word in words
         if word not in STOP_WORDS and len(word) > 2
     ]
 
     if not filtered_words:
         return []
 
-    # Count frequency
+    # Count word frequency
     frequency = Counter(filtered_words)
 
     total_words = len(filtered_words)
 
-    # Calculate scores
     keyword_data = []
 
     for word, count in frequency.items():
@@ -69,10 +71,10 @@ def calculate_keywords(text, top_n=15):
         # Term Frequency
         tf = count / total_words
 
-        # Give a slight bonus to longer words
+        # Give slightly higher importance to longer meaningful words
         length_bonus = min(len(word) / 10, 1.5)
 
-        # Final score
+        # Calculate relevance score
         score = tf * length_bonus
 
         keyword_data.append({
@@ -87,15 +89,19 @@ def calculate_keywords(text, top_n=15):
         reverse=True
     )
 
-    # Normalize score to 0-100
+    # Normalize score between 0 and 100
     if keyword_data:
+
         max_score = keyword_data[0]["score"]
 
-        for item in keyword_data:
-            item["score"] = round(
-                (item["score"] / max_score) * 100,
-                2
-            )
+        if max_score > 0:
+
+            for item in keyword_data:
+
+                item["score"] = round(
+                    (item["score"] / max_score) * 100,
+                    2
+                )
 
     return keyword_data[:top_n]
 
@@ -109,9 +115,11 @@ def home():
 def extract_keywords():
 
     try:
+
         data = request.get_json()
 
         if not data:
+
             return jsonify({
                 "success": False,
                 "message": "No data received."
@@ -120,12 +128,14 @@ def extract_keywords():
         text = data.get("text", "").strip()
 
         if not text:
+
             return jsonify({
                 "success": False,
                 "message": "Please enter some text."
             }), 400
 
         if len(text) < 20:
+
             return jsonify({
                 "success": False,
                 "message": "Please enter at least 20 characters."
@@ -134,19 +144,24 @@ def extract_keywords():
         keywords = calculate_keywords(text)
 
         if not keywords:
+
             return jsonify({
                 "success": False,
                 "message": "Could not find meaningful keywords."
             }), 400
 
+        words = clean_text(text)
+
         return jsonify({
             "success": True,
             "keywords": keywords,
-            "total_words": len(clean_text(text)),
-            "unique_words": len(set(clean_text(text)))
+            "total_words": len(words),
+            "unique_words": len(set(words))
         })
 
     except Exception as e:
+
+        print("Error:", e)
 
         return jsonify({
             "success": False,
@@ -154,5 +169,15 @@ def extract_keywords():
         }), 500
 
 
+# Local development
 if __name__ == "__main__":
-    app.run(debug=True)
+
+    port = int(
+        os.environ.get("PORT", 5000)
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False
+    )
